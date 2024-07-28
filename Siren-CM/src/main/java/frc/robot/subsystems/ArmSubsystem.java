@@ -43,30 +43,47 @@ public class ArmSubsystem extends SubsystemBase {
   CANcoder canCoder;
   // CANCoder - Configuration
   CANcoderConfiguration canCoder_config;
-  // Follower - 
+  // Follower - defines a master motor controller so that other controllers can be set to mimic
+  // or reverse whatever the master controller does
   Follower follower;
-  // Position Voltage - 
+  // Position Voltage - a control for the motor controllers that uses a setpoint to direct the motor
+  // while also applying voltage as a feed forward value
   PositionVoltage positionVoltage;
-  // Trapezoid Profile - 
+  // Trapezoid Profile - a trapezoid motion profile that is intended to be combined with PID control
   TrapezoidProfile trapezoidProfile;
-  // Trapezoid Profile State - 
-  TrapezoidProfile.State tp_goal;
-  // Trapezoid Profile State - 
-  TrapezoidProfile.State tp_setpoint;
+  // Trapezoid Profile State - the desired goal state of the arm
+  TrapezoidProfile.State tp_goal_state;
+  // Trapezoid Profile State - the current state of the arm
+  TrapezoidProfile.State tp_current_state;
 
 
-  /** Constructor: creates a new ArmSubsystem. Initialize all of the objects
+  /** Constructor: creates a new ArmSubsystem. Initialize and configure all of the objects
    * that you have previously defined for the ArmSubsystem
   */
   public ArmSubsystem() {
     // 1. Intialize the CANCoder and configuration object
+    canCoder = new CANcoder(0);
+    canCoder_config = new CANcoderConfiguration();
 
     // 2. Set CANCoder configuration variables
-    
+    // Set the range of values that the sensor outputs to be [-0.5, 0.5) rotations
+    canCoder_config.MagnetSensor.AbsoluteSensorRange = AbsoluteSensorRangeValue.Signed_PlusMinusHalf;
+    // Set which spin direction of the sensor is positive (when facing the LED side of the CANCoder)
+    // to be counter clockwise
+    canCoder_config.MagnetSensor.SensorDirection = SensorDirectionValue.CounterClockwise_Positive;
+    // Add an offset to the reading from the sensor. Since the sensor is not mounted to the robot such that
+    // we want a reading of 0 when the magnet aligns with the LED, we want to offset the reading so that
+    // we get a reading of 0 when we are at an angle we define to be 0 (I think this is parallel with the ground?)
+    // TODO: get this actual value using Phoenix Tuner while holding the arm at what we want 0 degrees to be
+    canCoder_config.MagnetSensor.MagnetOffset = 0;
+    // Apply the configuration to the CANCoder object
+    canCoder.getConfigurator().apply(canCoder_config);
+
     // 3. Initialize the motors and configuration object
     talonFX_L = new TalonFX(0);
     talonFX_R = new TalonFX(1);
     talonFX_config = new TalonFXConfiguration();
+
     // 4. Set TalonFX configuration variables
     // Set the motor controller state when there is no output (no commands being sent)
     // or when the robot is disabled to be Brake mode (holds current position)
@@ -94,35 +111,78 @@ public class ArmSubsystem extends SubsystemBase {
     // Apply the configuration values that we just set to our actual motor controller object
     talonFX_L.getConfigurator().apply(talonFX_config);
 
+    // 5. Set our PID values for the TalonFX controllers using slotConfigs
+    Slot0Configs slotConfigs = new Slot0Configs();
+    // TODO: Set values for our PID constants
+    slotConfigs.kP = 0;
+    slotConfigs.kI = 0;
+    slotConfigs.kD = 0;
+    // Apply these PID settings (gains) to slot 0 on our TalonFX motor controllers
+    talonFX_L.getConfigurator().apply(slotConfigs);
+
+    // 6. Set the right TalonFX controller to follow the motor output of the left controller
+    // Set the motor ID of the master motor. Since the motors both work to lift the arm and are
+    // mounted on opposite sides of the robot, we need both motors to spin in opposite directions
+    // in order to both lift/lower the arm together
+    follower = new Follower(talonFX_L.getDeviceID(), true);
+    // Tell the right TalonFX to follow the left TalonFX
+    talonFX_R.setControl(follower);
+
+    // 7. Initialize PositionVoltage control for TalonFX motor controller
+    // PositionVoltage - set the position, in rotations, that we want to drive towards
+    // when we intialize the armSubsystem (our initial/resting state, which is parallel to the ground)
+    // withSlot - set which PID gains to apply to this control
+    // withFeedForward - how much of a feed forward signal to apply in volts
+    // TODO: why is feed forward 0? That means it does nothing right?
+    // withEnableFOC - a Phoneix Pro Pay 2 Win feature: increases power by ~15% by leveraging
+    // torque (current) control
+    positionVoltage = new PositionVoltage(0).withSlot(0).withFeedForward(0).withEnableFOC(true);
+
+    // 8. Intialize our Trapezoidal Motion Profile
+    // Create the trapezoidProfile and set max Velocity and Acceleration. Units are in rotations/second
+    trapezoidProfile = new TrapezoidProfile(new TrapezoidProfile.Constraints(20, 40));
+    // Create a goal state and a current state for the trapezoidProfile
+    tp_goal_state = new TrapezoidProfile.State();
+    tp_current_state = new TrapezoidProfile.State();
   }
 
-  /**
-   * Example command factory method.
-   *
-   * @return a command
-   */
-  public Command exampleMethodCommand() {
-    // Inline construction of command goes here.
-    // Subsystem::RunOnce implicitly requires `this` subsystem.
-    return runOnce(
+  // Use positionVoltage control only to move the arm (no trapezoidal motion profile included)
+  public Command setArmSetpoint(double setpoint) {
+    // Pass in a lambda (unnamed, one-line) function into runOnce and return a Command
+    // that that executes the lambda function
+    return this.runOnce(
         () -> {
-          /* one-time action goes here */
+          // Request PID to move to target position
+          // This overloaded setControl method takes in a positionVoltage object (which carries
+          // a position and a feed forward voltage to apply)
+          // Pass in the desired setpoint (position in rotations) to the positionVoltage object
+          talonFX_L.setControl(positionVoltage.withPosition(setpoint));
+          // Remember that talonFX_R used setControl(follower), so it will just mimic talonFX_L
         });
   }
 
-  /**
-   * An example method querying a boolean state of the subsystem (for example, a digital sensor).
-   *
-   * @return value of some boolean subsystem state, such as a digital sensor.
-   */
-  public boolean exampleCondition() {
-    // Query some boolean state, such as a digital sensor.
-    return false;
+  // Set the armSubsystem's trapezoid profile's goal state by feeding in a position (in rotations)
+  // periodic will then check to see if we are at the goal, and if not, it will use 
+  // positionVoltage to move the arm to that position according to the trapezoidal motion profile
+  public Command setTrapezoidGoalState(double setpoint){
+    return this.runOnce(
+      () -> {
+        // Upon reaching this state, the velocity should be 0
+        tp_goal_state = new TrapezoidProfile.State(setpoint, 0);
+      });
   }
 
   @Override
+  // This method will be called once per scheduler run
   public void periodic() {
-    // This method will be called once per scheduler run
+    // Calculate the new current state (as time passes while the arm moves) using the trapezoidProfile
+    // Returns the position and velocity of the current state
+    tp_current_state = trapezoidProfile.calculate(0.02, tp_current_state, tp_goal_state);
+    // Use the tp_current_state's position and velocity to update the positionVoltage control
+    positionVoltage.Position = tp_current_state.position;
+    positionVoltage.Velocity = tp_current_state.velocity;
+    // Command the arm to move to the desired position using the values calculated by the trapezoid motion profile
+    talonFX_L.setControl(positionVoltage);
   }
 
   @Override
