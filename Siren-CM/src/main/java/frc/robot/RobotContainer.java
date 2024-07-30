@@ -26,6 +26,7 @@ import frc.robot.subsystems.ClimberSubsystem;
 import frc.robot.subsystems.IndexerSubsystem;
 import frc.robot.subsystems.IntakeSubsystem;
 import frc.robot.subsystems.ShooterSubsystem;
+import frc.robot.subsystems.minor_subsystems.MusicSubsystem;
 import frc.robot.commands.MusicCommand;
 
 
@@ -60,12 +61,10 @@ public class RobotContainer {
   private final IndexerSubsystem indexerSubsystem = new IndexerSubsystem();
   private final IntakeSubsystem intakeSubsystem = new IntakeSubsystem();
   private final ShooterSubsystem shooterSubsystem = new ShooterSubsystem();
-
-  // Orchestra for playing music through CTRE motor controllers
-  private final Orchestra orchestra = new Orchestra();
+  private final MusicSubsystem musicSubsystem = new MusicSubsystem();
 
   // Define Robot Commands
-  private final MusicCommand music = new MusicCommand(orchestra);
+  // private final MusicCommand music = new MusicCommand(orchestra);
 
 
   private void configureBindings() {
@@ -98,26 +97,24 @@ public class RobotContainer {
     joystick.y().onTrue(armSubsystem.setTrapezoidGoalState(0));
 
     // Press left trigger to play a song
-    joystick.leftTrigger().onTrue(music);
+    // joystick.leftTrigger().onTrue(music);
+    joystick.leftTrigger().onTrue(musicSubsystem.playMusic());
+    joystick.leftTrigger().onFalse(musicSubsystem.pauseMusic());
+    joystick.rightTrigger().onTrue(musicSubsystem.stopMusic());
 
   }
 
-  private void initializeOrchestra(){
+  private void hireOrchestra(){
     // Add instruments to the orchestra (each motor controlled by a CTRE controller can be an instrument)
     // TODO: Add more instruments :)
-    orchestra.addInstrument(armSubsystem.getTalonFX_L());
-    orchestra.addInstrument(armSubsystem.getTalonFX_R());
-    // Attempt to load the chrp file and log an error if it doesn't work
-    var chrp_status = orchestra.loadMusic("music/UnderTheSea.chrp");
-    if (!chrp_status.isOK()) {
-      // TODO: log error here, idk how to do that yet
-    }
+    musicSubsystem.addInstrument(armSubsystem.getTalonFX_L());
+    musicSubsystem.addInstrument(armSubsystem.getTalonFX_R());
   }
 
   // RobotContainer Constructor
   public RobotContainer() {
+    hireOrchestra();
     configureBindings();
-    initializeOrchestra();
   }
 
   public Command getAutonomousCommand() {

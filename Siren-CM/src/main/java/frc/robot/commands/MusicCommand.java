@@ -1,14 +1,13 @@
-// Copyright (c) FIRST and other WPILib contributors.
-// Open Source Software; you can modify and/or share it under the terms of
-// the WPILib BSD license file in the root directory of this project.
+/* -------------------- WARNING --------------------
+ * This command has been deprecated. I don't know if this works at all since I scrapped
+ * this command in favor of creating the more versatile MusicSubsystem.
+ */
 
 package frc.robot.commands;
 
 import edu.wpi.first.wpilibj2.command.Command;
 import com.ctre.phoenix6.Orchestra;
 
-
-/** An example command that uses an example subsystem. */
 public class MusicCommand extends Command {
   @SuppressWarnings({"PMD.UnusedPrivateField", "PMD.SingularField"})
   Orchestra m_orchestra;
