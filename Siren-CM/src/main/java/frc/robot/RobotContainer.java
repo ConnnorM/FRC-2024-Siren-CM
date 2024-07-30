@@ -7,6 +7,7 @@ package frc.robot;
 import com.ctre.phoenix6.Utils;
 import com.ctre.phoenix6.mechanisms.swerve.SwerveModule.DriveRequestType;
 import com.ctre.phoenix6.mechanisms.swerve.SwerveRequest;
+import com.ctre.phoenix6.Orchestra;
 
 import edu.wpi.first.math.geometry.Pose2d;
 import edu.wpi.first.math.geometry.Rotation2d;
@@ -21,6 +22,12 @@ import frc.robot.commands.ExampleCommand;
 import frc.robot.generated.TunerConstants;
 import frc.robot.subsystems.CommandSwerveDrivetrain;
 import frc.robot.subsystems.ArmSubsystem;
+import frc.robot.subsystems.ClimberSubsystem;
+import frc.robot.subsystems.IndexerSubsystem;
+import frc.robot.subsystems.IntakeSubsystem;
+import frc.robot.subsystems.ShooterSubsystem;
+import frc.robot.commands.MusicCommand;
+
 
 /**
  * This class is where the bulk of the robot should be declared. Since Command-based is a
@@ -47,8 +54,19 @@ public class RobotContainer {
   private final Telemetry logger = new Telemetry(MaxSpeed);
   // ******************** AUTO-GENERATED SWERVE CODE FROM PHOENIX TUNER ********************
 
-  // The robot's subsystems and commands are defined here...
+  // Define Robot Subsystems
   private final ArmSubsystem armSubsystem = new ArmSubsystem();
+  private final ClimberSubsystem climberSubsystem = new ClimberSubsystem();
+  private final IndexerSubsystem indexerSubsystem = new IndexerSubsystem();
+  private final IntakeSubsystem intakeSubsystem = new IntakeSubsystem();
+  private final ShooterSubsystem shooterSubsystem = new ShooterSubsystem();
+
+  // Orchestra for playing music through CTRE motor controllers
+  private final Orchestra orchestra = new Orchestra();
+
+  // Define Robot Commands
+  private final MusicCommand music = new MusicCommand(orchestra);
+
 
   private void configureBindings() {
     // ******************** AUTO-GENERATED SWERVE CODE FROM PHOENIX TUNER ********************
@@ -79,11 +97,27 @@ public class RobotContainer {
     // Same command with Y button, moves the arm to 0 position
     joystick.y().onTrue(armSubsystem.setTrapezoidGoalState(0));
 
+    // Press left trigger to play a song
+    joystick.leftTrigger().onTrue(music);
+
+  }
+
+  private void initializeOrchestra(){
+    // Add instruments to the orchestra (each motor controlled by a CTRE controller can be an instrument)
+    // TODO: Add more instruments :)
+    orchestra.addInstrument(armSubsystem.getTalonFX_L());
+    orchestra.addInstrument(armSubsystem.getTalonFX_R());
+    // Attempt to load the chrp file and log an error if it doesn't work
+    var chrp_status = orchestra.loadMusic("music/UnderTheSea.chrp");
+    if (!chrp_status.isOK()) {
+      // TODO: log error here, idk how to do that yet
+    }
   }
 
   // RobotContainer Constructor
   public RobotContainer() {
     configureBindings();
+    initializeOrchestra();
   }
 
   public Command getAutonomousCommand() {
